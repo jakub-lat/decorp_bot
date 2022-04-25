@@ -1,0 +1,22 @@
+cargo-features = ["edition2021"]
+
+[package]
+name = "decorp_bot"
+version = "0.1.0"
+edition = "2021"
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+headless_chrome = { git = "https://github.com/piratehacker/rust-headless-chrome" }
+anyhow = "1.0"
+text_io = "0.1.10"
+serde = "1.0.136"
+failure = "0.1.8"
+toml = "0.5.8"
+proc-macro2 = "1.0.36"
+regex = "1.5.5"
+atoi = "1.0.0"
+serde_json = "1.0.79"
+serenity = { version = "0.10.10", default-features = false, features = ["client", "gateway", "rustls_backend", "model", "standard_framework", "collector"] }
+tokio = { version = "1.17.0", features = ["full"] }
+async-trait = "0.1.52"
