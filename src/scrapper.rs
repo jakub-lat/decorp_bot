@@ -4,8 +4,10 @@ use anyhow::{anyhow, Result};
 use std::fs;
 use std::fs::File;
 use std::io::Write;
+use std::path::Path;
 use std::time::Duration;
-use headless_chrome::protocol::cdp::Network::{Cookie, CookieParam};
+use headless_chrome::protocol::cdp::Network::{Cookie, CookieParam, DeleteCookies};
+use headless_chrome::protocol::cdp::Page::DeleteCookie;
 
 use crate::Config;
 
@@ -170,6 +172,23 @@ impl Scrapper {
         let cookies = self.tab.get_cookies()?;
         let mut file = File::create(&self.cfg.cookies_path)?;
         file.write_all(&serde_json::to_vec(&cookies)?)?;
+        Ok(())
+    }
+
+    pub fn logout(&self) -> Result<()> {
+        if let Ok(cookies) = self.tab.get_cookies() {
+            self.tab.delete_cookies(cookies.iter().map(|c| DeleteCookies {
+                name: c.name.clone(),
+                domain: Some(c.domain.clone()),
+                path: None,
+                url: None
+            }).collect())?;
+        }
+
+        if Path::new(&self.cfg.cookies_path).exists() {
+            fs::remove_file(&self.cfg.cookies_path)?;
+        }
+
         Ok(())
     }
 }

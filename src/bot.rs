@@ -86,6 +86,7 @@ async fn login(ctx: &Context, msg: &Message) -> CommandResult {
 
     msg.channel_id.say(&ctx.http, "Logging in...").await?;
 
+    scrapper.logout()?;
     let res = scrapper.login()?;
     if let LoginResult::AuthCodeNeeded = res {
         msg.channel_id.say(&ctx.http, "Enter Steam Guard auth code:").await?;
