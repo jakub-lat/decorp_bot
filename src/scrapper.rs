@@ -4,6 +4,7 @@ use anyhow::{anyhow, Result};
 use std::fs;
 use std::fs::File;
 use std::io::Write;
+use std::time::Duration;
 use headless_chrome::protocol::cdp::Network::{Cookie, CookieParam};
 
 use crate::Config;
@@ -34,14 +35,7 @@ pub enum LoginResult {
 
 impl Scrapper {
     pub fn new(cfg: Config) -> Result<Self> {
-        // let x = Stats{};
-        let browser = Browser::new(
-            LaunchOptions::default_builder()
-                .headless(true)
-                .build()
-                .expect("Could not find chrome executable"))?;
-
-        let tab = browser.new_tab()?;
+        let (browser, tab) = Self::open()?;
         Ok(Scrapper {
             browser,
             tab,
@@ -49,7 +43,25 @@ impl Scrapper {
             is_logged_in: false,
         })
     }
+
+    fn open() -> Result<(Browser, Arc<Tab>)> {
+        let browser = Browser::new(
+            LaunchOptions::default_builder()
+                .headless(true)
+                .build()
+                .expect("Could not find chrome executable"))?;
+
+        let tab = browser.new_tab()?;
+        Ok((browser, tab))
+    }
+
     pub fn login(&mut self) -> Result<LoginResult> {
+        if !self.browser.is_open() {
+            let (browser, tab) = Self::open()?;
+            self.browser = browser;
+            self.tab = tab;
+        }
+
         if let Err(why) = self.load_cookies() {
             println!("load cookies failed: {}", why);
         }
@@ -108,9 +120,17 @@ impl Scrapper {
         Ok(())
     }
 
-    pub fn get_stats(&self) -> Result<Stats> {
+    pub fn get_stats(&mut self) -> Result<Stats> {
+        if !self.browser.is_open() {
+            let (browser, tab) = Self::open()?;
+            self.browser = browser;
+            self.tab = tab;
+        }
+
         if !self.is_logged_in {
-            return Err(anyhow!("not logged in"));
+            if let LoginResult::AuthCodeNeeded = self.login()? {
+                return Err(anyhow!("not logged in"));
+            }
         }
 
         self.tab.navigate_to("https://partner.steampowered.com/app/details/1968950/?dateStart=2000-01-01&dateEnd=2022-04-24&priorDateStart=1977-09-08&priorDateEnd=1999-12-31")?;

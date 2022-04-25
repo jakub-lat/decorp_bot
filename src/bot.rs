@@ -5,7 +5,7 @@ use serenity::client::bridge::gateway::GatewayIntents;
 use serenity::prelude::*;
 use serenity::model::channel::Message;
 use serenity::framework::standard::macros::{command, group, hook, check};
-use serenity::framework::standard::{StandardFramework, CommandResult, Args, CommandOptions, Reason};
+use serenity::framework::standard::{StandardFramework, CommandResult, Args, CommandOptions, Reason, CommandError};
 use crate::{Config, Scrapper};
 use anyhow::{anyhow, Result};
 use serenity::model::id::RoleId;
@@ -91,6 +91,8 @@ async fn login(ctx: &Context, msg: &Message) -> CommandResult {
         msg.channel_id.say(&ctx.http, "Enter Steam Guard auth code:").await?;
         if let Some(answer) = &msg.author.await_reply(&ctx).timeout(Duration::from_secs(30)).await {
             scrapper.provide_auth_code(answer.content.clone())?;
+        } else {
+            return CommandResult::Err(CommandError::from(anyhow!("No auth code provided")));
         }
     }
 
@@ -104,7 +106,7 @@ async fn login(ctx: &Context, msg: &Message) -> CommandResult {
 async fn stats(ctx: &Context, msg: &Message) -> CommandResult {
     let lock = ctx.data.read().await;
     let scrapper = lock.get::<Scrapper>().unwrap().clone();
-    let scrapper = scrapper.read().await;
+    let mut scrapper = scrapper.write().await;
 
     let mut msg = msg.channel_id.say(&ctx.http, "Loading...").await?;
 
