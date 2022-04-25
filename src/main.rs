@@ -1,15 +1,10 @@
 mod scrapper;
 mod bot;
 
-use std::error::Error;
 use std::fs;
 use std::sync::Arc;
 use serde::{Deserialize, Serialize};
-use text_io::read;
 use anyhow::Result;
-use serenity::Client;
-use serenity::client::bridge::gateway::GatewayIntents;
-use serenity::model::id::{ChannelId, GuildId};
 use tokio::sync::RwLock;
 use crate::scrapper::Scrapper;
 use crate::bot::{Bot};
@@ -21,6 +16,8 @@ pub struct Config {
     webhook_url: String,
     cookies_path: String,
     bot_token: String,
+    owner_id: u64,
+    role_id: u64,
 }
 
 #[tokio::main]

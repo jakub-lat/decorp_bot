@@ -4,10 +4,12 @@ use serenity::async_trait;
 use serenity::client::bridge::gateway::GatewayIntents;
 use serenity::prelude::*;
 use serenity::model::channel::Message;
-use serenity::framework::standard::macros::{command, group, hook};
-use serenity::framework::standard::{StandardFramework, CommandResult};
+use serenity::framework::standard::macros::{command, group, hook, check};
+use serenity::framework::standard::{StandardFramework, CommandResult, Args, CommandOptions, Reason};
 use crate::{Config, Scrapper};
 use anyhow::{anyhow, Result};
+use serenity::model::id::RoleId;
+use serenity::model::Permissions;
 use crate::scrapper::LoginResult;
 
 pub struct Bot {
@@ -24,6 +26,45 @@ impl EventHandler for Handler {}
 #[commands(login, stats)]
 struct General;
 
+#[check]
+#[name = "InProject"]
+async fn in_project_check(
+    ctx: &Context,
+    msg: &Message,
+    _: &mut Args,
+    _: &CommandOptions,
+) -> Result<(), Reason> {
+    let lock = ctx.data.read().await;
+    let cfg = lock.get::<Config>().unwrap().clone();
+
+    if let Some(member) = &msg.member {
+        if member.roles.contains(&RoleId(cfg.role_id)) {
+            return Ok(());
+        }
+    }
+
+    return Err(Reason::User("Forbidden".to_string()));
+}
+
+
+#[check]
+#[name = "Owner"]
+async fn owner_check(
+    ctx: &Context,
+    msg: &Message,
+    _: &mut Args,
+    _: &CommandOptions,
+) -> Result<(), Reason> {
+    let lock = ctx.data.read().await;
+    let cfg = lock.get::<Config>().unwrap().clone();
+
+    if msg.author.id != cfg.owner_id {
+        return Err(Reason::User("Not owner".to_string()));
+    }
+
+    Ok(())
+}
+
 #[hook]
 async fn after(ctx: &Context, msg: &Message, command_name: &str, command_result: CommandResult) {
     match command_result {
@@ -37,6 +78,7 @@ async fn after(ctx: &Context, msg: &Message, command_name: &str, command_result:
 }
 
 #[command]
+#[checks(Owner)]
 async fn login(ctx: &Context, msg: &Message) -> CommandResult {
     let lock = ctx.data.read().await;
     let scrapper = lock.get::<Scrapper>().unwrap().clone();
@@ -47,7 +89,7 @@ async fn login(ctx: &Context, msg: &Message) -> CommandResult {
     let res = scrapper.login()?;
     if let LoginResult::AuthCodeNeeded = res {
         msg.channel_id.say(&ctx.http, "Enter Steam Guard auth code:").await?;
-        if let Some(answer) = &msg.author.await_reply(&ctx).timeout(Duration::from_secs(60)).await {
+        if let Some(answer) = &msg.author.await_reply(&ctx).timeout(Duration::from_secs(30)).await {
             scrapper.provide_auth_code(answer.content.clone())?;
         }
     }
@@ -58,6 +100,7 @@ async fn login(ctx: &Context, msg: &Message) -> CommandResult {
 }
 
 #[command]
+#[checks(InProject)]
 async fn stats(ctx: &Context, msg: &Message) -> CommandResult {
     let lock = ctx.data.read().await;
     let scrapper = lock.get::<Scrapper>().unwrap().clone();
@@ -74,6 +117,10 @@ async fn stats(ctx: &Context, msg: &Message) -> CommandResult {
 
 impl TypeMapKey for Scrapper {
     type Value = Arc<RwLock<Scrapper>>;
+}
+
+impl TypeMapKey for Config {
+    type Value = Config;
 }
 
 impl Bot {
@@ -95,6 +142,7 @@ impl Bot {
         {
             let mut lock = client.data.write().await;
             lock.insert::<Scrapper>(scrapper);
+            lock.insert::<Config>(config.clone());
         }
 
         Self {

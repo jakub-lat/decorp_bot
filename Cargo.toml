@@ -17,6 +17,6 @@ proc-macro2 = "1.0.36"
 regex = "1.5.5"
 atoi = "1.0.0"
 serde_json = "1.0.79"
-serenity = { version = "0.10.10", default-features = false, features = ["client", "gateway", "rustls_backend", "model", "standard_framework", "collector"] }
+serenity = { version = "0.10.10", default-features = false, features = ["client", "gateway", "cache", "rustls_backend", "model", "standard_framework", "collector"] }
 tokio = { version = "1.17.0", features = ["full"] }
 async-trait = "0.1.52"
