@@ -1,12 +1,13 @@
-use std::borrow::Borrow;
-use std::sync::Arc;
-use headless_chrome::{Browser, LaunchOptions, Tab};
-use anyhow::{anyhow, Result};
 use std::{fs, io};
+use std::borrow::Borrow;
 use std::fs::File;
 use std::io::{ErrorKind, Write};
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Duration;
+
+use anyhow::{anyhow, Result};
+use headless_chrome::{Browser, LaunchOptions, Tab};
 use headless_chrome::protocol::cdp::Network::{Cookie, CookieParam, DeleteCookies};
 use headless_chrome::protocol::cdp::Page::DeleteCookie;
 use scraper::{Html, Selector};

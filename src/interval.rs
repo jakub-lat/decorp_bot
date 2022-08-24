@@ -2,18 +2,19 @@ use std::fs;
 use std::ops::Add;
 use std::sync::Arc;
 use std::time::Duration;
-use serde::{Deserialize, Serialize};
+
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use serenity::futures::AsyncWriteExt;
 use serenity::http::{CacheHttp, Http};
 use serenity::model::id::ChannelId;
 use serenity::prelude::TypeMap;
-use tokio::sync::RwLock;
-use crate::scrapper::{Scrapper, Stats};
-use crate::bot::{Bot, IntervalStarted};
 use tokio::{task, time};
-use crate::Config;
+use tokio::sync::RwLock;
 
+use crate::bot::{Bot, IntervalStarted};
+use crate::Config;
+use crate::scrapper::{Scrapper, Stats};
 
 pub fn start_interval(cfg: Config, scrapper: Arc<RwLock<Scrapper>>, http: Arc<Http>, data: Arc<RwLock<TypeMap>>) {
     let ch_id = ChannelId(cfg.updates_channel_id);

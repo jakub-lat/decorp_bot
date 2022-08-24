@@ -1,15 +1,17 @@
 use std::ops::Deref;
 use std::sync::Arc;
 use std::time::Duration;
+
+use anyhow::{anyhow, Result};
 use serenity::async_trait;
 use serenity::client::bridge::gateway::GatewayIntents;
-use serenity::prelude::*;
+use serenity::framework::standard::{Args, CommandError, CommandOptions, CommandResult, Reason, StandardFramework};
+use serenity::framework::standard::macros::{check, command, group, hook};
 use serenity::model::channel::Message;
-use serenity::framework::standard::macros::{command, group, hook, check};
-use serenity::framework::standard::{StandardFramework, CommandResult, Args, CommandOptions, Reason, CommandError};
-use crate::{Config, interval, Scrapper};
-use anyhow::{anyhow, Result};
 use serenity::model::id::RoleId;
+use serenity::prelude::*;
+
+use crate::{Config, interval, Scrapper};
 use crate::scrapper::LoginResult;
 
 pub struct Bot {

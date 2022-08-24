@@ -1,20 +1,22 @@
-mod scrapper;
-mod bot;
-mod interval;
-
 use std::fs;
 use std::ops::Add;
 use std::sync::Arc;
 use std::time::Duration;
-use serde::{Deserialize, Serialize};
+
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use serenity::http::CacheHttp;
 use serenity::model::id::ChannelId;
-use tokio::sync::RwLock;
-use crate::scrapper::{LoginResult, Scrapper, Stats};
-use crate::bot::{Bot};
 use tokio::{task, time};
+use tokio::sync::RwLock;
+
+use crate::bot::Bot;
 use crate::interval::start_interval;
+use crate::scrapper::{LoginResult, Scrapper, Stats};
+
+mod scrapper;
+mod bot;
+mod interval;
 
 #[derive(Serialize, Deserialize, Default, Clone)]
 pub struct Config {
