@@ -1,28 +1,35 @@
+use std::borrow::Borrow;
 use std::sync::Arc;
 use headless_chrome::{Browser, LaunchOptions, Tab};
 use anyhow::{anyhow, Result};
-use std::fs;
+use std::{fs, io};
 use std::fs::File;
-use std::io::Write;
+use std::io::{ErrorKind, Write};
 use std::path::Path;
 use std::time::Duration;
 use headless_chrome::protocol::cdp::Network::{Cookie, CookieParam, DeleteCookies};
 use headless_chrome::protocol::cdp::Page::DeleteCookie;
+use scraper::{Html, Selector};
 
 use crate::Config;
 
 pub struct Scrapper {
-    browser: Browser,
-    tab: Arc<Tab>,
+    browser: Option<Arc<Browser>>,
+    tab: Option<Arc<Tab>>,
     cfg: Config,
     is_logged_in: bool,
+    client: Option<Arc<reqwest::Client>>,
 }
 
 unsafe impl Send for Scrapper {}
 unsafe impl Sync for Scrapper {}
 
-#[derive(Debug)]
+#[derive(Debug, Default, PartialEq, PartialOrd, Clone)]
 pub struct Stats {
+    total_units: i32,
+    steam_units: i32,
+    units_returned: i32,
+    gross_revenue: String,
     net_revenue: String,
     current_players: i32,
     daily_active_users: i32,
@@ -37,16 +44,24 @@ pub enum LoginResult {
 
 impl Scrapper {
     pub fn new(cfg: Config) -> Result<Self> {
-        let (browser, tab) = Self::open()?;
+        // let (browser, tab) = Self::open()?;
         Ok(Scrapper {
-            browser,
-            tab,
+            browser: None,
+            tab: None,
             cfg,
             is_logged_in: false,
+            client: None,
         })
     }
 
-    fn open() -> Result<(Browser, Arc<Tab>)> {
+    fn is_open(&self) -> bool {
+        match self.browser.clone() {
+            Some(b) => b.is_open(),
+            None => false
+        }
+    }
+
+    fn open(&mut self) -> Result<()> {
         let browser = Browser::new(
             LaunchOptions::default_builder()
                 .headless(true)
@@ -54,23 +69,34 @@ impl Scrapper {
                 .expect("Could not find chrome executable"))?;
 
         let tab = browser.new_tab()?;
-        Ok((browser, tab))
+
+        self.browser = Some(Arc::new(browser));
+        self.tab = Some(tab);
+
+        Ok(())
     }
 
-    pub fn login(&mut self) -> Result<LoginResult> {
-        if !self.browser.is_open() {
-            let (browser, tab) = Self::open()?;
-            self.browser = browser;
-            self.tab = tab;
+    pub async fn login(&mut self) -> Result<LoginResult> {
+        self.client = Some(Arc::new(self.get_client()?));
+
+        if self.check_if_logged_in().await.is_ok() {
+            self.is_logged_in = true;
+            return Ok(LoginResult::Success);
+        }
+
+        if !self.is_open() {
+            self.open()?;
         }
 
         if let Err(why) = self.load_cookies() {
             println!("load cookies failed: {}", why);
         }
 
-        self.tab.navigate_to("https://partner.steampowered.com/login/")?;
+        let tab = self.tab.clone().unwrap();
 
-        let username_input = self.tab.wait_for_element("input#username");
+        tab.navigate_to("https://partner.steampowered.com/login/")?;
+
+        let username_input = tab.wait_for_element("input#username");
         if username_input.is_err() {
             println!("already logged in");
             self.is_logged_in = true;
@@ -79,77 +105,149 @@ impl Scrapper {
 
         let username_input = username_input.unwrap();
         username_input.click()?;
-        self.tab.type_str(&self.cfg.steam_login)?;
+        tab.type_str(&self.cfg.steam_login)?;
 
-        self.tab.wait_for_element("input#password")?.click()?;
-        self.tab.type_str(&self.cfg.steam_password)?.press_key("Enter")?;
+        tab.wait_for_element("input#password")?.click()?;
+        tab.type_str(&self.cfg.steam_password)?.press_key("Enter")?;
 
-        let auth_el = self.tab.wait_for_element("input#authcode");
+        let auth_el = tab.wait_for_element("input#authcode");
 
-        if let Ok(auth_el) = auth_el {
+        if auth_el.is_ok() {
             return Ok(LoginResult::AuthCodeNeeded);
         }
 
-
-        self.tab.wait_until_navigated()?;
+        tab.wait_until_navigated()?;
         self.save_cookies()?;
 
         self.is_logged_in = true;
+        self.client = Some(Arc::new(self.get_client()?));
+        self.close()?;
 
         Ok(LoginResult::Success)
     }
 
-    pub fn provide_auth_code(&mut self, auth_code: String) -> Result<()> {
-        let auth_el = self.tab.wait_for_element("input#authcode")?;
+    async fn check_if_logged_in(&self) -> Result<()> {
+        let text = self.client.clone()
+            .ok_or_else(|| anyhow!("client not initialized"))?
+            .get("https://partner.steampowered.com/app/details/1968950/?dateStart=2000-01-01&dateEnd=2022-04-24&priorDateStart=1977-09-08&priorDateEnd=1999-12-31")
+            .send()
+            .await?
+            .text()
+            .await?;
 
-        auth_el.click()?;
-
-        self.tab.type_str(auth_code.trim())?;
-
-        self.tab.wait_for_element("input#friendlyname")?.click()?;
-        self.tab.type_str("Decorporation bot")?;
-
-
-        self.tab.wait_for_element("#auth_buttonset_entercode > div.auth_button.leftbtn")?.click()?;
-        println!("clicked submit btn");
-        self.tab.wait_for_element("#success_continue_btn")?.click()?;
-
-        self.tab.wait_until_navigated()?;
-        self.save_cookies()?;
-
-        self.is_logged_in = true;
+        let document = &Html::parse_document(&text);
+        let title = self.get_element_text(document, "head title")?;
+        if title != "Game: Decorporation" {
+            return Err(anyhow!("Login failed"));
+        }
 
         Ok(())
     }
 
-    pub fn get_stats(&mut self) -> Result<Stats> {
-        if !self.browser.is_open() {
-            let (browser, tab) = Self::open()?;
-            self.browser = browser;
-            self.tab = tab;
-        }
+    pub fn provide_auth_code(&mut self, auth_code: String) -> Result<()> {
+        let tab = self.tab.clone().unwrap();
 
+        let auth_el = tab.wait_for_element("input#authcode")?;
+
+        auth_el.click()?;
+
+        tab.type_str(auth_code.trim())?;
+
+        tab.wait_for_element("input#friendlyname")?.click()?;
+        tab.type_str("Decorporation bot")?;
+
+
+        tab.wait_for_element("#auth_buttonset_entercode > div.auth_button.leftbtn")?.click()?;
+        println!("clicked submit btn");
+        tab.wait_for_element("#success_continue_btn")?.click()?;
+
+        tab.wait_until_navigated()?;
+        self.save_cookies()?;
+
+        self.is_logged_in = true;
+        self.client = Some(Arc::new(self.get_client()?));
+
+        self.close()?;
+
+        Ok(())
+    }
+
+    fn get_client(&self) -> Result<reqwest::Client> {
+        let jar = self.get_reqwest_cookies()?;
+        let arc = Arc::new(jar);
+        let client = reqwest::Client::builder().cookie_provider(arc).build()?;
+        Ok(client)
+    }
+
+    pub async fn get_stats(&mut self) -> Result<Stats> {
         if !self.is_logged_in {
-            if let LoginResult::AuthCodeNeeded = self.login()? {
+            if let LoginResult::AuthCodeNeeded = self.login().await? {
                 return Err(anyhow!("not logged in"));
             }
         }
 
-        self.tab.navigate_to("https://partner.steampowered.com/app/details/1968950/?dateStart=2000-01-01&dateEnd=2022-04-24&priorDateStart=1977-09-08&priorDateEnd=1999-12-31")?;
+        let text = self.client.clone()
+            .ok_or_else(|| anyhow!("client not initialized"))?
+            .get("https://partner.steampowered.com/app/details/1968950/?dateStart=2000-01-01&dateEnd=2022-04-24&priorDateStart=1977-09-08&priorDateEnd=1999-12-31")
+            .send()
+            .await?
+            .text()
+            .await?;
 
-        Ok(Stats {
-            net_revenue: self.tab.wait_for_element("#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(2) > td:nth-child(2)")?.get_inner_text()?,
-            current_players: self.tab.wait_for_element("#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(7) > td:nth-child(2)")?.get_inner_text()?.atoi()?,
-            daily_active_users: self.tab.wait_for_element("#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(8) > td:nth-child(2)")?.get_inner_text()?.atoi()?,
-            lifetime_unique_users: self.tab.wait_for_element("#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(9) > td:nth-child(2)")?.get_inner_text()?.atoi()?,
-            wishlist_count: self.tab.wait_for_element("#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(11) > td:nth-child(2)")?.get_inner_text()?.atoi()?,
+        // let mut file = File::create("res.html")?;
+        // file.write_all(text.as_bytes())?;
+
+        let document = &Html::parse_document(&text);
+
+        let title = self.get_element_text(document, "head title")?;
+        if title != "Game: Decorporation" {
+            return Err(anyhow!("not logged in!"));
+        }
+
+        Ok(Stats{
+            gross_revenue: self.get_element_text(document, r"#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(1) > td:nth-child(2)")?,
+            net_revenue: self.get_element_text(document, r"#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(2) > td:nth-child(2)")?,
+            total_units: self.get_element_text(document, r"#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(6) > td:nth-child(2)")?.atoi()?,
+            steam_units: self.get_element_text(document, r"#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(4) > td:nth-child(2)")?.atoi()?,
+            units_returned: self.get_element_text(document, r"#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(7) > td:nth-child(2)")?.atoi()?,
+            current_players: self.get_element_text(document, r"#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(9) > td:nth-child(2)")?.atoi()?,
+            daily_active_users: self.get_element_text(document, r"#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(10) > td:nth-child(2)")?.atoi()?,
+            lifetime_unique_users: self.get_element_text(document, r"#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(11) > td:nth-child(2)")?.atoi()?,
+            wishlist_count: self.get_element_text(document, r"#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(14) > td:nth-child(2)")?.trim().to_string().atoi()?,
         })
+
+
+        // Ok(Stats {
+        //     net_revenue: self.tab.wait_for_element()?.get_inner_text()?,
+        //     current_players: self.tab.wait_for_element()?.get_inner_text()?.atoi()?,
+        //     daily_active_users: self.tab.wait_for_element()?.get_inner_text()?.atoi()?,
+        //     lifetime_unique_users: self.tab.wait_for_element()?.get_inner_text()?.atoi()?,
+        //     wishlist_count: self.tab.wait_for_element()?.get_inner_text()?.atoi()?,
+        // })
     }
 
-    fn load_cookies(&self) -> Result<()> {
-        let str = fs::read_to_string(&self.cfg.cookies_path)?;
+    fn get_element_text(&self, document: &Html, selector: &str) -> Result<String> {
+        let net_revenue_selector = Selector::parse(selector).unwrap();
+        let el = document.select(&net_revenue_selector).next().ok_or_else(|| anyhow!("element not found"))?;
+        let first = el.text().next().ok_or_else(|| anyhow!("text not found"))?;
+        Ok(first.to_string())
+    }
+
+    fn load_cookies_from_file(&self) -> Result<Vec<CookieParam>> {
+        let res = fs::read_to_string(&self.cfg.cookies_path);
+
+        if let Err(why) = res {
+            return if why.kind() == ErrorKind::NotFound {
+                Ok(vec![])
+            } else {
+                Err(anyhow!(why))
+            }
+        }
+
+        let str = res.unwrap();
+
         let cookies: Vec<Cookie> = serde_json::from_str(&str)?;
-        self.tab.set_cookies(cookies.iter().map(|c| CookieParam{
+        let res = cookies.iter().map(|c| CookieParam{
             name: c.name.clone(),
             value: c.value.clone(),
             url: None,
@@ -164,30 +262,65 @@ impl Scrapper {
             secure: c.secure.into(),
             same_site: c.same_site.clone(),
             partition_key: None
-        }).collect())?;
+        }).collect::<Vec<_>>();
+        Ok(res)
+    }
+
+    fn load_cookies(&self) -> Result<()> {
+        if self.tab.is_none() {
+            return Err(anyhow!("not logged in!"));
+        }
+        self.tab.clone().unwrap().set_cookies(self.load_cookies_from_file()?)?;
         Ok(())
     }
 
     fn save_cookies(&self) -> Result<()> {
-        let cookies = self.tab.get_cookies()?;
+        let cookies = self.tab.clone().unwrap().get_cookies()?;
         let mut file = File::create(&self.cfg.cookies_path)?;
         file.write_all(&serde_json::to_vec(&cookies)?)?;
         Ok(())
     }
 
-    pub fn logout(&self) -> Result<()> {
-        if let Ok(cookies) = self.tab.get_cookies() {
-            self.tab.delete_cookies(cookies.iter().map(|c| DeleteCookies {
-                name: c.name.clone(),
-                domain: Some(c.domain.clone()),
-                path: None,
-                url: None
-            }).collect())?;
+    fn get_reqwest_cookies(&self) -> Result<reqwest::cookie::Jar> {
+        let jar = reqwest::cookie::Jar::default();
+        let url = reqwest::Url::parse("https://partner.steampowered.com")?;
+
+        let cookies = self.load_cookies_from_file()?;
+        for c in cookies {
+            jar.add_cookie_str(
+                &cookie::Cookie::build(c.name, c.value).domain("partner.steampowered.com").finish().to_string(),
+                &url);
         }
 
+        Ok(jar)
+    }
+
+    pub fn close(&mut self) -> Result<()> {
+        if let Some(tab) = self.tab.clone() {
+            tab.close(true)?;
+        }
+        self.browser = None;
+        self.tab = None;
+        Ok(())
+    }
+
+    pub fn logout(&mut self) -> Result<()> {
         if Path::new(&self.cfg.cookies_path).exists() {
             fs::remove_file(&self.cfg.cookies_path)?;
         }
+
+        if let Some(tab) = self.tab.clone() {
+            if let Ok(cookies) = tab.get_cookies() {
+                tab.delete_cookies(cookies.iter().map(|c| DeleteCookies {
+                    name: c.name.clone(),
+                    domain: Some(c.domain.clone()),
+                    path: None,
+                    url: None
+                }).collect())?;
+            }
+        }
+
+        self.close()?;
 
         Ok(())
     }

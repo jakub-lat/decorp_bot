@@ -9,7 +9,6 @@ use serenity::framework::standard::{StandardFramework, CommandResult, Args, Comm
 use crate::{Config, Scrapper};
 use anyhow::{anyhow, Result};
 use serenity::model::id::RoleId;
-use serenity::model::Permissions;
 use crate::scrapper::LoginResult;
 
 pub struct Bot {
@@ -23,7 +22,7 @@ impl EventHandler for Handler {}
 
 
 #[group]
-#[commands(login, stats)]
+#[commands(login, stats, logout)]
 struct General;
 
 #[check]
@@ -86,14 +85,14 @@ async fn login(ctx: &Context, msg: &Message) -> CommandResult {
 
     msg.channel_id.say(&ctx.http, "Logging in...").await?;
 
-    scrapper.logout()?;
-    let res = scrapper.login()?;
+    // scrapper.logout()?;
+    let res = scrapper.login().await?;
     if let LoginResult::AuthCodeNeeded = res {
         msg.channel_id.say(&ctx.http, "Enter Steam Guard auth code:").await?;
         if let Some(answer) = &msg.author.await_reply(&ctx).timeout(Duration::from_secs(30)).await {
             scrapper.provide_auth_code(answer.content.clone())?;
         } else {
-            return CommandResult::Err(CommandError::from(anyhow!("No auth code provided")));
+            return Err(CommandError::from(anyhow!("No auth code provided")));
         }
     }
 
@@ -101,6 +100,23 @@ async fn login(ctx: &Context, msg: &Message) -> CommandResult {
 
     Ok(())
 }
+
+#[command]
+#[checks(Owner)]
+async fn logout(ctx: &Context, msg: &Message) -> CommandResult {
+    let lock = ctx.data.read().await;
+    let scrapper = lock.get::<Scrapper>().unwrap().clone();
+    let mut scrapper = scrapper.write().await;
+
+    msg.channel_id.say(&ctx.http, "Logging out...").await?;
+
+    scrapper.logout()?;
+
+    msg.channel_id.say(&ctx.http, "Logout successful").await?;
+
+    Ok(())
+}
+
 
 #[command]
 #[checks(InProject)]
@@ -111,7 +127,7 @@ async fn stats(ctx: &Context, msg: &Message) -> CommandResult {
 
     let mut msg = msg.channel_id.say(&ctx.http, "Loading...").await?;
 
-    let stats = scrapper.get_stats()?;
+    let stats = scrapper.get_stats().await?;
 
     msg.edit(ctx, |m| m.content(format!("```{:#?}```", stats))).await?;
 
@@ -129,7 +145,7 @@ impl TypeMapKey for Config {
 impl Bot {
     pub async fn new(config: Config, scrapper: Arc<RwLock<Scrapper>>) -> Self {
         let framework = StandardFramework::new()
-            .configure(|c| c.prefix("!"))
+            .configure(|c| c.prefix(config.prefix.clone()))
             .after(after)
             .group(&GENERAL_GROUP);
 
