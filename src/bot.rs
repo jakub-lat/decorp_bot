@@ -140,6 +140,8 @@ async fn stats(ctx: &Context, msg: &Message) -> CommandResult {
 #[command]
 #[checks(InProject)]
 async fn start_interval(ctx: &Context, msg: &Message) -> CommandResult {
+    msg.channel_id.say(&ctx.http, "Starting interval...").await?;
+
     let (interval_started, config, scrapper) = {
         let lock = ctx.data.read().await;
         (lock.get::<IntervalStarted>().cloned(), lock.get::<Config>().cloned(), lock.get::<Scrapper>().cloned())
