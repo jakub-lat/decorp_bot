@@ -124,8 +124,10 @@ async fn logout(ctx: &Context, msg: &Message) -> CommandResult {
 #[command]
 #[checks(InProject)]
 async fn stats(ctx: &Context, msg: &Message) -> CommandResult {
-    let lock = ctx.data.read().await;
-    let scrapper = lock.get::<Scrapper>().unwrap().clone();
+    let scrapper = {
+        let lock = ctx.data.read().await;
+        lock.get::<Scrapper>().unwrap().clone()
+    };
     let mut scrapper = scrapper.write().await;
 
     let mut msg = msg.channel_id.say(&ctx.http, "Loading...").await?;
@@ -146,7 +148,7 @@ async fn start_interval(ctx: &Context, msg: &Message) -> CommandResult {
         let lock = ctx.data.read().await;
         (lock.get::<IntervalStarted>().cloned(), lock.get::<Config>().cloned(), lock.get::<Scrapper>().cloned())
     };
-    if interval_started.map_or(false, |x| *x.clone()) {
+    if interval_started.map_or(false, |x| *x) {
         msg.channel_id.say(&ctx.http, "Already started!").await?;
         return Ok(());
     }
