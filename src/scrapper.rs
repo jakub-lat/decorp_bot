@@ -37,6 +37,7 @@ pub struct Stats {
     wishlist_count: i32,
 }
 
+#[derive(PartialEq)]
 pub enum LoginResult {
     Success,
     AuthCodeNeeded,

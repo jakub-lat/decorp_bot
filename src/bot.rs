@@ -1,3 +1,4 @@
+use std::ops::Deref;
 use std::sync::Arc;
 use std::time::Duration;
 use serenity::async_trait;
@@ -6,7 +7,7 @@ use serenity::prelude::*;
 use serenity::model::channel::Message;
 use serenity::framework::standard::macros::{command, group, hook, check};
 use serenity::framework::standard::{StandardFramework, CommandResult, Args, CommandOptions, Reason, CommandError};
-use crate::{Config, Scrapper};
+use crate::{Config, interval, Scrapper};
 use anyhow::{anyhow, Result};
 use serenity::model::id::RoleId;
 use crate::scrapper::LoginResult;
@@ -22,7 +23,7 @@ impl EventHandler for Handler {}
 
 
 #[group]
-#[commands(login, stats, logout)]
+#[commands(login, stats, logout, start_interval)]
 struct General;
 
 #[check]
@@ -134,12 +135,41 @@ async fn stats(ctx: &Context, msg: &Message) -> CommandResult {
     Ok(())
 }
 
+#[command]
+#[checks(InProject)]
+async fn start_interval(ctx: &Context, msg: &Message) -> CommandResult {
+    let (interval_started, config, scrapper) = {
+        let lock = ctx.data.read().await;
+        (lock.get::<IntervalStarted>().cloned(), lock.get::<Config>().cloned(), lock.get::<Scrapper>().cloned())
+    };
+    if interval_started.map_or(false, |x| *x.clone()) {
+        msg.channel_id.say(&ctx.http, "Already started!").await?;
+        return Ok(());
+    }
+
+    interval::start_interval(config.unwrap(), scrapper.unwrap(), ctx.http.clone(), ctx.data.clone());
+
+    msg.channel_id.say(&ctx.http, "Interval started").await?;
+
+    Ok(())
+}
+
 impl TypeMapKey for Scrapper {
     type Value = Arc<RwLock<Scrapper>>;
 }
 
 impl TypeMapKey for Config {
     type Value = Config;
+}
+
+pub struct IntervalStarted;
+
+impl TypeMapKey for IntervalStarted {
+    type Value = Arc<bool>;
+}
+
+impl TypeMapKey for Bot {
+    type Value = Arc<Bot>;
 }
 
 impl Bot {

@@ -1,5 +1,6 @@
 mod scrapper;
 mod bot;
+mod interval;
 
 use std::fs;
 use std::ops::Add;
@@ -7,11 +8,13 @@ use std::sync::Arc;
 use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use anyhow::Result;
+use serenity::http::CacheHttp;
 use serenity::model::id::ChannelId;
 use tokio::sync::RwLock;
-use crate::scrapper::{Scrapper, Stats};
+use crate::scrapper::{LoginResult, Scrapper, Stats};
 use crate::bot::{Bot};
 use tokio::{task, time};
+use crate::interval::start_interval;
 
 #[derive(Serialize, Deserialize, Default, Clone)]
 pub struct Config {
@@ -23,7 +26,10 @@ pub struct Config {
     owner_id: u64,
     role_id: u64,
     prefix: String,
+    #[serde(default)]
     updates_channel_id: u64,
+    #[serde(default)]
+    updates_interval_secs: u64,
 }
 
 #[tokio::main]
@@ -34,41 +40,15 @@ async fn main() -> Result<()> {
 
     let mut bot = Bot::new(cfg.clone(), scrapper.clone()).await;
 
-    let ch_id = ChannelId(cfg.updates_channel_id);
-    if ch_id != 0 {
-        let cache_and_http = bot.client.cache_and_http.http.clone();
-        task::spawn(async move {
-            let mut interval = time::interval(Duration::from_secs(30));
-            let mut last_stats = Stats::default();
+    let res = {
+        let mut scrapper = scrapper.write().await;
+        scrapper.login().await
+    };
 
-            'forever: loop {
-                interval.tick().await;
-                let res = async {
-                    let mut scrapper = scrapper.write().await;
-                    scrapper.get_stats().await
-                }.await;
-
-                let msg = match res {
-                    Ok(stats) => {
-                        if stats == last_stats {
-                            println!("stats haven't changed");
-                            continue 'forever;
-                        }
-
-                        last_stats = stats.clone();
-
-                        format!("Stats changed: ```{:#?}```", stats)
-                    },
-                    Err(why) => {
-                        format!("failed to get stats: {:?}", why)
-                    }
-                };
-
-                if let Err(why) = ch_id.send_message(&cache_and_http, |m| m.content(msg)).await {
-                    println!("failed to send message: {:?}", why);
-                }
-            }
-        });
+    if res.map_or(false, |x| x == LoginResult::Success) {
+        start_interval(cfg.clone(), scrapper.clone(), bot.client.cache_and_http.http.clone(), bot.client.data.clone());
+    } else {
+        println!("cannot start interval: not logged in");
     }
 
     bot.run().await?;
