@@ -145,7 +145,7 @@ async fn start_interval(ctx: &Context, msg: &Message) -> CommandResult {
     msg.channel_id.say(&ctx.http, "Starting interval...").await?;
 
     let (interval_started, config, scrapper) = {
-        let lock = ctx.data.read().await;
+        let lock = ctx.data.try_read()?;
         (lock.get::<IntervalStarted>().cloned(), lock.get::<Config>().cloned(), lock.get::<Scrapper>().cloned())
     };
     if interval_started.map_or(false, |x| *x) {
