@@ -92,7 +92,7 @@ async fn login(ctx: &Context, msg: &Message) -> CommandResult {
     let res = scrapper.login().await?;
     if let LoginResult::AuthCodeNeeded = res {
         msg.channel_id.say(&ctx.http, "Enter Steam Guard auth code:").await?;
-        if let Some(answer) = &msg.author.await_reply(&ctx).timeout(Duration::from_secs(30)).await {
+        if let Some(answer) = &msg.author.await_reply(&ctx).timeout(Duration::from_secs(120)).await {
             scrapper.provide_auth_code(answer.content.clone())?;
         } else {
             return Err(CommandError::from(anyhow!("No auth code provided")));
@@ -145,7 +145,7 @@ async fn start_interval(ctx: &Context, msg: &Message) -> CommandResult {
     msg.channel_id.say(&ctx.http, "Starting interval...").await?;
 
     let (interval_started, config, scrapper) = {
-        let lock = ctx.data.try_read()?;
+        let lock = ctx.data.read().await;
         (lock.get::<IntervalStarted>().cloned(), lock.get::<Config>().cloned(), lock.get::<Scrapper>().cloned())
     };
     if interval_started.map_or(false, |x| *x) {
@@ -155,7 +155,7 @@ async fn start_interval(ctx: &Context, msg: &Message) -> CommandResult {
 
     interval::start_interval(config.unwrap(), scrapper.unwrap(), ctx.http.clone(), ctx.data.clone());
 
-    msg.channel_id.say(&ctx.http, "Interval started").await?;
+    msg.channel_id.say(&ctx.http, "Interval started!").await?;
 
     Ok(())
 }

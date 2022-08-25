@@ -11,6 +11,7 @@ use serenity::model::id::ChannelId;
 use serenity::prelude::TypeMap;
 use tokio::{task, time};
 use tokio::sync::RwLock;
+use similar::{ChangeTag, TextDiff};
 
 use crate::bot::{Bot, IntervalStarted};
 use crate::Config;
@@ -32,6 +33,7 @@ pub fn start_interval(cfg: Config, scrapper: Arc<RwLock<Scrapper>>, http: Arc<Ht
         }
 
         let mut last_stats = Stats::default();
+        let mut last_stats_str = String::new();
 
         'forever: loop {
             interval.tick().await;
@@ -47,9 +49,22 @@ pub fn start_interval(cfg: Config, scrapper: Arc<RwLock<Scrapper>>, http: Arc<Ht
                         continue 'forever;
                     }
 
-                    last_stats = stats.clone();
+                    let stats_str = format!("{:#?}", stats);
 
-                    (format!("Stats changed: ```{:#?}```", stats), false)
+                    let diff = TextDiff::from_lines(&last_stats_str, &stats_str);
+                    let diff_str = diff.iter_all_changes().map(|change| {
+                        let sign = match change.tag() {
+                            ChangeTag::Delete => "-",
+                            ChangeTag::Insert => "+",
+                            ChangeTag::Equal => " ",
+                        };
+                        format!("{}{}", sign, change)
+                    }).collect::<Vec<_>>().join("");
+
+                    last_stats = stats.clone();
+                    last_stats_str = stats_str;
+
+                    (format!("Stats changed: ```diff\n{}```", diff_str), false)
                 },
                 Err(why) => {
                     (format!("failed to get stats: {:?}", why), true)
