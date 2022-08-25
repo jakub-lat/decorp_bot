@@ -80,7 +80,7 @@ async fn after(ctx: &Context, msg: &Message, command_name: &str, command_result:
 }
 
 #[command]
-#[checks(Owner)]
+#[checks(InProject)]
 async fn login(ctx: &Context, msg: &Message) -> CommandResult {
     let lock = ctx.data.read().await;
     let scrapper = lock.get::<Scrapper>().unwrap().clone();
@@ -105,7 +105,7 @@ async fn login(ctx: &Context, msg: &Message) -> CommandResult {
 }
 
 #[command]
-#[checks(Owner)]
+#[checks(InProject)]
 async fn logout(ctx: &Context, msg: &Message) -> CommandResult {
     let lock = ctx.data.read().await;
     let scrapper = lock.get::<Scrapper>().unwrap().clone();
