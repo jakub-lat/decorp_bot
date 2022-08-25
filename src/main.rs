@@ -22,6 +22,7 @@ mod interval;
 pub struct Config {
     steam_login: String,
     steam_password: String,
+    stats_url: String,
     webhook_url: String,
     cookies_path: String,
     bot_token: String,

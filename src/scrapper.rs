@@ -15,9 +15,13 @@ use scraper::{Html, Selector};
 use crate::Config;
 
 pub struct Scrapper {
+    login_url: String,
+    stats_url: String,
+    steam_username: String,
+    steam_password: String,
+    cookies_path: String,
     browser: Option<Arc<Browser>>,
     tab: Option<Arc<Tab>>,
-    cfg: Config,
     is_logged_in: bool,
     client: Option<Arc<reqwest::Client>>,
 }
@@ -48,9 +52,13 @@ impl Scrapper {
     pub fn new(cfg: Config) -> Result<Self> {
         // let (browser, tab) = Self::open()?;
         Ok(Scrapper {
+            login_url: "https://partner.steampowered.com/login/".to_string(),
+            stats_url: cfg.stats_url,
+            steam_username: cfg.steam_login,
+            steam_password: cfg.steam_password,
+            cookies_path: cfg.cookies_path,
             browser: None,
             tab: None,
-            cfg,
             is_logged_in: false,
             client: None,
         })
@@ -96,7 +104,7 @@ impl Scrapper {
 
         let tab = self.tab.clone().unwrap();
 
-        tab.navigate_to("https://partner.steampowered.com/login/")?;
+        tab.navigate_to(&self.login_url)?;
 
         let username_input = tab.wait_for_element("input#username");
         if username_input.is_err() {
@@ -107,10 +115,10 @@ impl Scrapper {
 
         let username_input = username_input.unwrap();
         username_input.click()?;
-        tab.type_str(&self.cfg.steam_login)?;
+        tab.type_str(&self.steam_username)?;
 
         tab.wait_for_element("input#password")?.click()?;
-        tab.type_str(&self.cfg.steam_password)?.press_key("Enter")?;
+        tab.type_str(&self.steam_password)?.press_key("Enter")?;
 
         let auth_el = tab.wait_for_element("input#authcode");
 
@@ -131,7 +139,7 @@ impl Scrapper {
     async fn check_if_logged_in(&self) -> Result<()> {
         let text = self.client.clone()
             .ok_or_else(|| anyhow!("client not initialized"))?
-            .get("https://partner.steampowered.com/app/details/1968950/?dateStart=2000-01-01&dateEnd=2022-04-24&priorDateStart=1977-09-08&priorDateEnd=1999-12-31")
+            .get(&self.stats_url)
             .send()
             .await?
             .text()
@@ -190,7 +198,7 @@ impl Scrapper {
 
         let text = self.client.clone()
             .ok_or_else(|| anyhow!("client not initialized"))?
-            .get("https://partner.steampowered.com/app/details/1968950/?dateStart=2000-01-01&dateEnd=2022-04-24&priorDateStart=1977-09-08&priorDateEnd=1999-12-31")
+            .get(&self.stats_url)
             .send()
             .await?
             .text()
@@ -236,7 +244,7 @@ impl Scrapper {
     }
 
     fn load_cookies_from_file(&self) -> Result<Vec<CookieParam>> {
-        let res = fs::read_to_string(&self.cfg.cookies_path);
+        let res = fs::read_to_string(&self.cookies_path);
 
         if let Err(why) = res {
             return if why.kind() == ErrorKind::NotFound {
@@ -278,7 +286,7 @@ impl Scrapper {
 
     fn save_cookies(&self) -> Result<()> {
         let cookies = self.tab.clone().unwrap().get_cookies()?;
-        let mut file = File::create(&self.cfg.cookies_path)?;
+        let mut file = File::create(&self.cookies_path)?;
         file.write_all(&serde_json::to_vec(&cookies)?)?;
         Ok(())
     }
@@ -307,8 +315,8 @@ impl Scrapper {
     }
 
     pub fn logout(&mut self) -> Result<()> {
-        if Path::new(&self.cfg.cookies_path).exists() {
-            fs::remove_file(&self.cfg.cookies_path)?;
+        if Path::new(&self.cookies_path).exists() {
+            fs::remove_file(&self.cookies_path)?;
         }
 
         if let Some(tab) = self.tab.clone() {
