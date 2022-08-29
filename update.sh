@@ -1,0 +1,1 @@
+git pull && cargo build && pm2 restart decorp_bot
