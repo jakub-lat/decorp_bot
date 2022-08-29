@@ -1,18 +1,18 @@
-FROM rustlang/rust:slim AS planner
+FROM rust:slim AS planner
 WORKDIR /app
 
 RUN cargo install cargo-chef
 COPY . .
 RUN cargo chef prepare  --recipe-path recipe.json
 
-FROM rustlang/rust:slim AS cacher
+FROM rust:slim AS cacher
 WORKDIR /app
 
 RUN cargo install cargo-chef
 COPY --from=planner /app/recipe.json recipe.json
 RUN cargo chef cook --release --recipe-path recipe.json
 
-FROM rustlang/rust:slim AS builder
+FROM rust:slim AS builder
 WORKDIR /app
 
 COPY . .
