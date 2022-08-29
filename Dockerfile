@@ -14,7 +14,7 @@ COPY . .
 RUN cargo build --release --bin app
 
 # We do not need the Rust toolchain to run the binary!
-FROM debian:buster AS runtime
+FROM ubuntu:22.10 AS runtime
 WORKDIR /app
 
 RUN mkdir /app/data
