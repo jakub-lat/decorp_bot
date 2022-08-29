@@ -11,7 +11,7 @@ COPY --from=planner /app/recipe.json recipe.json
 RUN RUST_BACKTRACE=full cargo chef cook --release --recipe-path recipe.json
 # Build application
 COPY . .
-RUN cargo build --release --bin app
+RUN cargo build --release
 
 # We do not need the Rust toolchain to run the binary!
 FROM ubuntu:22.10 AS runtime
@@ -22,5 +22,5 @@ ENV COOKIES_PATH /app/data/cookies.json
 
 RUN apt-get update && apt-get install -y chromium-browser
 
-COPY --from=builder /app/target/release/app /app/main
-ENTRYPOINT ["/app/main"]
+COPY --from=builder /app/target/release/decorp_bot /app/decorp_bot
+ENTRYPOINT ["/app/decorp_bot"]
