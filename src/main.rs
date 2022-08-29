@@ -39,9 +39,9 @@ pub struct Config {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let cfg: Config = envy::from_env()
-        .or_else(|e| toml::from_str(&fs::read_to_string("config.toml")?)?)
-        .expect("Failed to parse config from env/config.toml");
+    let cfg: Config = envy::from_env::<Config>()
+        .or_else(|_| toml::from_str::<Config>(&fs::read_to_string("config.toml").expect("config.toml not found")))
+        .expect("failed to parse config from env/config.toml");
 
     let scrapper = Arc::new(RwLock::new(Scrapper::new(cfg.clone())?));
 

@@ -15,14 +15,17 @@ RUN cargo build --release --bin app
 
 # We do not need the Rust toolchain to run the binary!
 FROM debian:buster AS runtime
-WORKDIR app
+WORKDIR /app
 
-RUN apt install -y wget
+RUN mkdir /app/data
+ENV COOKIES_PATH /app/data/cookies.json
+
+RUN apt-get update && apt-get install -y wget
 RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add -
 RUN sh -c 'echo "deb http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list'
 RUN apt-get update
 RUN apt --fix-broken install
 RUN apt-get install google-chrome-stable -y
 
-COPY --from=builder /app/target/release/app /usr/local/bin
-ENTRYPOINT ["/usr/local/bin/app"]
+COPY --from=builder /app/target/release/app /app/main
+ENTRYPOINT ["/app/main"]
