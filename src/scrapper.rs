@@ -123,6 +123,13 @@ impl Scrapper {
 
         let auth_el = tab.wait_for_element("input#authcode");
 
+        let val = tab.wait_for_element("body")?
+            .call_js_fn("function() { return this.innerHTML; }", vec![], false)?
+            .value.unwrap();
+
+        let mut file = File::create("login.html")?;
+        file.write_all(val.as_str().unwrap_or("").as_bytes())?;
+
         if auth_el.is_ok() {
             return Ok(LoginResult::AuthCodeNeeded);
         }
@@ -201,10 +208,6 @@ impl Scrapper {
                 return Err(anyhow!("not logged in"));
             }
         }
-
-        let text = self.get_stats_text().await?;
-        let mut file = File::create("res.html")?;
-        file.write_all(text.as_bytes())?;
 
         let document = &Html::parse_document(&text);
 
