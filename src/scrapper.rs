@@ -209,6 +209,7 @@ impl Scrapper {
             }
         }
 
+        let text = self.get_stats_text().await?;
         let document = &Html::parse_document(&text);
 
         let title = document.get_element_text("head title")?;
