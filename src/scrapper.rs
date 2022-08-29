@@ -11,6 +11,7 @@ use headless_chrome::{Browser, LaunchOptions, Tab};
 use headless_chrome::protocol::cdp::Network::{Cookie, CookieParam, DeleteCookies};
 use headless_chrome::protocol::cdp::Page::DeleteCookie;
 use scraper::{Html, Selector};
+use crate::utils::*;
 
 use crate::Config;
 
@@ -137,16 +138,10 @@ impl Scrapper {
     }
 
     async fn check_if_logged_in(&self) -> Result<()> {
-        let text = self.client.clone()
-            .ok_or_else(|| anyhow!("client not initialized"))?
-            .get(&self.stats_url)
-            .send()
-            .await?
-            .text()
-            .await?;
+        let text = self.get_stats_text().await?;
 
         let document = &Html::parse_document(&text);
-        let title = self.get_element_text(document, "head title")?;
+        let title = document.get_element_text("head title")?;
         if title != "Game: Decorporation" {
             return Err(anyhow!("Login failed"));
         }
@@ -189,13 +184,7 @@ impl Scrapper {
         Ok(client)
     }
 
-    pub async fn get_stats(&mut self) -> Result<Stats> {
-        if !self.is_logged_in {
-            if let LoginResult::AuthCodeNeeded = self.login().await? {
-                return Err(anyhow!("not logged in"));
-            }
-        }
-
+    async fn get_stats_text(&self) -> Result<String> {
         let text = self.client.clone()
             .ok_or_else(|| anyhow!("client not initialized"))?
             .get(&self.stats_url)
@@ -203,27 +192,37 @@ impl Scrapper {
             .await?
             .text()
             .await?;
+        Ok(text)
+    }
 
+    pub async fn get_stats(&mut self) -> Result<Stats> {
+        if !self.is_logged_in {
+            if let LoginResult::AuthCodeNeeded = self.login().await? {
+                return Err(anyhow!("not logged in"));
+            }
+        }
+
+        let text = self.get_stats_text().await?;
         // let mut file = File::create("res.html")?;
         // file.write_all(text.as_bytes())?;
 
         let document = &Html::parse_document(&text);
 
-        let title = self.get_element_text(document, "head title")?;
+        let title = document.get_element_text("head title")?;
         if title != "Game: Decorporation" {
             return Err(anyhow!("not logged in!"));
         }
 
         Ok(Stats{
-            gross_revenue: self.get_element_text(document, r"#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(1) > td:nth-child(2)")?,
-            net_revenue: self.get_element_text(document, r"#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(2) > td:nth-child(2)")?,
-            total_units: self.get_element_text(document, r"#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(6) > td:nth-child(2)")?.atoi()?,
-            steam_units: self.get_element_text(document, r"#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(4) > td:nth-child(2)")?.atoi()?,
-            units_returned: self.get_element_text(document, r"#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(7) > td:nth-child(2)")?.atoi()?,
-            current_players: self.get_element_text(document, r"#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(9) > td:nth-child(2)")?.atoi()?,
-            daily_active_users: self.get_element_text(document, r"#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(10) > td:nth-child(2)")?.atoi()?,
-            lifetime_unique_users: self.get_element_text(document, r"#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(11) > td:nth-child(2)")?.atoi()?,
-            wishlist_count: self.get_element_text(document, r"#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(14) > td:nth-child(2)")?.trim().to_string().atoi()?,
+            gross_revenue: document.get_element_text(r"#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(1) > td:nth-child(2)")?,
+            net_revenue: document.get_element_text(r"#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(2) > td:nth-child(2)")?,
+            total_units: document.get_element_text(r"#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(6) > td:nth-child(2)")?.atoi()?,
+            steam_units: document.get_element_text(r"#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(4) > td:nth-child(2)")?.atoi()?,
+            units_returned: document.get_element_text(r"#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(7) > td:nth-child(2)")?.atoi()?,
+            current_players: document.get_element_text(r"#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(9) > td:nth-child(2)")?.atoi()?,
+            daily_active_users: document.get_element_text(r"#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(10) > td:nth-child(2)")?.atoi()?,
+            lifetime_unique_users: document.get_element_text(r"#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(11) > td:nth-child(2)")?.atoi()?,
+            wishlist_count: document.get_element_text(r"#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(14) > td:nth-child(2)")?.trim().to_string().atoi()?,
         })
 
 
@@ -236,12 +235,7 @@ impl Scrapper {
         // })
     }
 
-    fn get_element_text(&self, document: &Html, selector: &str) -> Result<String> {
-        let net_revenue_selector = Selector::parse(selector).unwrap();
-        let el = document.select(&net_revenue_selector).next().ok_or_else(|| anyhow!("element not found"))?;
-        let first = el.text().next().ok_or_else(|| anyhow!("text not found"))?;
-        Ok(first.to_string())
-    }
+
 
     fn load_cookies_from_file(&self) -> Result<Vec<CookieParam>> {
         let res = fs::read_to_string(&self.cookies_path);
@@ -315,9 +309,9 @@ impl Scrapper {
     }
 
     pub fn logout(&mut self) -> Result<()> {
-        if Path::new(&self.cookies_path).exists() {
-            fs::remove_file(&self.cookies_path)?;
-        }
+        // if Path::new(&self.cookies_path).exists() {
+        //     fs::remove_file(&self.cookies_path)?;
+        // }
 
         if let Some(tab) = self.tab.clone() {
             if let Ok(cookies) = tab.get_cookies() {
@@ -336,12 +330,3 @@ impl Scrapper {
     }
 }
 
-trait Atoi {
-    fn atoi<T: atoi::FromRadix10SignedChecked>(self) -> Result<T>;
-}
-
-impl Atoi for String {
-    fn atoi<T: atoi::FromRadix10SignedChecked>(self) -> Result<T> {
-        atoi::atoi::<T>(self.as_bytes()).ok_or_else(|| anyhow!("Could not convert {} to i32", self))
-    }
-}

@@ -17,6 +17,7 @@ use crate::scrapper::{LoginResult, Scrapper, Stats};
 mod scrapper;
 mod bot;
 mod interval;
+mod utils;
 
 #[derive(Serialize, Deserialize, Default, Clone)]
 pub struct Config {
