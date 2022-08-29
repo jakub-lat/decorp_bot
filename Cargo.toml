@@ -7,7 +7,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-headless_chrome = { git = "https://github.com/piratehacker/rust-headless-chrome", rev = "7d808778ce10c958e11c5e910285f6cea948b01f", features = [ "fetch" ] }
+headless_chrome = { git = "https://github.com/piratehacker/rust-headless-chrome", rev = "7d808778ce10c958e11c5e910285f6cea948b01f" }
 anyhow = "1.0"
 text_io = "0.1.10"
 serde = "1.0.136"
