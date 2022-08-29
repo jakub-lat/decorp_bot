@@ -14,9 +14,10 @@ COPY . .
 RUN cargo build --release --bin app
 
 # We do not need the Rust toolchain to run the binary!
-FROM debian:buster-slim AS runtime
+FROM debian:buster AS runtime
 WORKDIR app
 
+RUN apt install -y wget
 RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add -
 RUN sh -c 'echo "deb http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list'
 RUN apt-get update
