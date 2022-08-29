@@ -20,7 +20,7 @@ WORKDIR /app
 RUN mkdir /app/data
 ENV COOKIES_PATH /app/data/cookies.json
 
-RUN apt-get update && apt-get install -y chromium-browser chromium-drivers
+RUN apt-get update && apt-get install -y chromium-browser
 
 COPY --from=builder /app/target/release/app /app/main
 ENTRYPOINT ["/app/main"]
