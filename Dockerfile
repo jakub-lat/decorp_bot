@@ -1,30 +1,20 @@
-FROM rust:slim AS planner
-WORKDIR /app
+FROM lukemathwalker/cargo-chef:latest-rust-1.58.1 AS chef
+WORKDIR app
 
-RUN cargo install cargo-chef
+FROM chef AS planner
 COPY . .
-RUN cargo chef prepare  --recipe-path recipe.json
+RUN cargo chef prepare --recipe-path recipe.json
 
-FROM rust:slim AS cacher
-WORKDIR /app
-
-RUN cargo install cargo-chef
+FROM chef AS builder
 COPY --from=planner /app/recipe.json recipe.json
+# Build dependencies - this is the caching Docker layer!
 RUN cargo chef cook --release --recipe-path recipe.json
-
-FROM rust:slim AS builder
-WORKDIR /app
-
+# Build application
 COPY . .
-COPY --from=cacher /app/target target
-COPY --from=cacher /usr/local/cargo /usr/local/cargo
-RUN cargo build --release --bin bot
+RUN cargo build --release --bin app
 
-FROM debian:buster-slim
-
-WORKDIR /home/site/wwwroot
-# RUN apt-get update && apt-get install -y ca-certificates openssh-server sudo && update-ca-certificates
-
-COPY --from=builder /app/target/release/bot /usr/local/bin
-
-CMD bot
+# We do not need the Rust toolchain to run the binary!
+FROM debian:buster-slim AS runtime
+WORKDIR app
+COPY --from=builder /app/target/release/app /usr/local/bin
+ENTRYPOINT ["/usr/local/bin/app"]
