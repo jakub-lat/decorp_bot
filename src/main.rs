@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use serenity::futures::TryStreamExt;
 use serenity::http::CacheHttp;
 use serenity::model::id::ChannelId;
 use tokio::{task, time};
@@ -38,7 +39,9 @@ pub struct Config {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let cfg: Config = toml::from_str(&fs::read_to_string("config.toml")?)?;
+    let cfg: Config = envy::from_env()
+        .or_else(|e| toml::from_str(&fs::read_to_string("config.toml")?)?)
+        .expect("Failed to parse config from env/config.toml");
 
     let scrapper = Arc::new(RwLock::new(Scrapper::new(cfg.clone())?));
 
