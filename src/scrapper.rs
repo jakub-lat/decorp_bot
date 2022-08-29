@@ -203,8 +203,8 @@ impl Scrapper {
         }
 
         let text = self.get_stats_text().await?;
-        // let mut file = File::create("res.html")?;
-        // file.write_all(text.as_bytes())?;
+        let mut file = File::create("res.html")?;
+        file.write_all(text.as_bytes())?;
 
         let document = &Html::parse_document(&text);
 
