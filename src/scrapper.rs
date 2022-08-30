@@ -9,8 +9,9 @@ use std::time::Duration;
 use anyhow::{anyhow, Result};
 use headless_chrome::{Browser, LaunchOptions, Tab};
 use headless_chrome::protocol::cdp::Network::{Cookie, CookieParam, DeleteCookies};
-use headless_chrome::protocol::cdp::Page::DeleteCookie;
+use headless_chrome::protocol::cdp::Page::{CaptureScreenshotFormatOption, DeleteCookie};
 use scraper::{Html, Selector};
+use tokio::time;
 use crate::utils::*;
 
 use crate::Config;
@@ -121,14 +122,23 @@ impl Scrapper {
         tab.wait_for_element("input#password")?.click()?;
         tab.type_str(&self.steam_password)?.press_key("Enter")?;
 
+        time::sleep(Duration::from_secs(10)).await;
+
+        let png = tab.capture_screenshot(CaptureScreenshotFormatOption::Png, Some(100), None, false)?;
+        let mut file = File::create("screenshot.png")?;
+        file.write_all(&png)?;
+
+
         let auth_el = tab.wait_for_element("input#authcode");
 
-        let val = tab.wait_for_element("body")?
-            .call_js_fn("function() { return this.innerHTML; }", vec![], false)?
-            .value.unwrap();
+        // let val = tab.wait_for_element("body")?
+        //     .call_js_fn("function() { return this.innerHTML; }", vec![], false)?
+        //     .value.unwrap();
+        //
+        // let mut file = File::create("login.html")?;
+        // file.write_all(val.as_str().unwrap_or("").as_bytes())?;
 
-        let mut file = File::create("login.html")?;
-        file.write_all(val.as_str().unwrap_or("").as_bytes())?;
+
 
         if auth_el.is_ok() {
             return Ok(LoginResult::AuthCodeNeeded);
