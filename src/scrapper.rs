@@ -37,7 +37,7 @@ struct Percent(f32);
 
 impl Debug for Percent {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:.2}", self.0)
+        write!(f, "{:.2}%", self.0 * 100f32)
     }
 }
 
@@ -250,7 +250,7 @@ impl Scrapper {
             lifetime_unique_users: document.get_element_text(r"#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(11) > td:nth-child(2)")?.atoi()?,
             wishlist_count: document.get_element_text(r"#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(14) > td:nth-child(2)")?.trim().to_string().atoi()?,
         };
-        res.return_percent = Percent((res.units_returned as f32) / (res.steam_units as f32));
+        res.return_percent = Percent((res.units_returned as f32) / (-res.steam_units as f32));
 
         Ok(res)
 
