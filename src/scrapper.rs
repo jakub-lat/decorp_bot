@@ -1,5 +1,6 @@
-use std::{fs, io};
+use std::{fmt, fs, io};
 use std::borrow::Borrow;
+use std::fmt::Debug;
 use std::fs::File;
 use std::io::{ErrorKind, Write};
 use std::path::Path;
@@ -31,11 +32,21 @@ pub struct Scrapper {
 unsafe impl Send for Scrapper {}
 unsafe impl Sync for Scrapper {}
 
+#[derive(Default, PartialEq, PartialOrd, Clone)]
+struct Percent(f32);
+
+impl Debug for Percent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:.2}", self.0)
+    }
+}
+
 #[derive(Debug, Default, PartialEq, PartialOrd, Clone)]
 pub struct Stats {
     total_units: i32,
     steam_units: i32,
     units_returned: i32,
+    return_percent: Percent,
     gross_revenue: String,
     net_revenue: String,
     current_players: i32,
@@ -227,17 +238,21 @@ impl Scrapper {
             return Err(anyhow!("not logged in!"));
         }
 
-        Ok(Stats{
+        let mut res = Stats{
             gross_revenue: document.get_element_text(r"#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(1) > td:nth-child(2)")?,
             net_revenue: document.get_element_text(r"#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(2) > td:nth-child(2)")?,
             total_units: document.get_element_text(r"#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(6) > td:nth-child(2)")?.atoi()?,
             steam_units: document.get_element_text(r"#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(4) > td:nth-child(2)")?.atoi()?,
             units_returned: document.get_element_text(r"#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(7) > td:nth-child(2)")?.atoi()?,
+            return_percent: Percent(0.0),
             current_players: document.get_element_text(r"#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(9) > td:nth-child(2)")?.atoi()?,
             daily_active_users: document.get_element_text(r"#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(10) > td:nth-child(2)")?.atoi()?,
             lifetime_unique_users: document.get_element_text(r"#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(11) > td:nth-child(2)")?.atoi()?,
             wishlist_count: document.get_element_text(r"#gameDataLeft > div.lifetimeSummaryCtn > table > tbody > tr:nth-child(14) > td:nth-child(2)")?.trim().to_string().atoi()?,
-        })
+        };
+        res.return_percent = Percent((res.units_returned as f32) / (res.steam_units as f32));
+
+        Ok(res)
 
 
         // Ok(Stats {
